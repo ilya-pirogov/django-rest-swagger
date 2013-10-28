@@ -4,7 +4,7 @@ from django.shortcuts import render_to_response, RequestContext
 from django.core.exceptions import PermissionDenied
 
 from rest_framework.views import Response
-from rest_framework_swagger.urlparser import UrlParser
+from rest_framework_swagger.routers import get_apis, get_top_level_apis
 from rest_framework_swagger.apidocview import APIDocView
 from rest_framework_swagger.docgenerator import DocumentationGenerator
 
@@ -44,7 +44,7 @@ class SwaggerResourcesView(APIDocView):
 
     def get(self, request):
         apis = []
-        resources = self.get_resources()
+        resources = get_top_level_apis()
 
         for path in resources:
             apis.append({
@@ -58,16 +58,11 @@ class SwaggerResourcesView(APIDocView):
             'apis': apis
         })
 
-    def get_resources(self):
-        urlparser = UrlParser()
-        apis = urlparser.get_apis(exclude_namespaces=SWAGGER_SETTINGS.get('exclude_namespaces'))
-        return urlparser.get_top_level_apis(apis)
-
 
 class SwaggerApiView(APIDocView):
 
     def get(self, request, path):
-        apis = self.get_api_for_resource(path)
+        apis = get_apis(path)
         generator = DocumentationGenerator()
 
         return Response({
@@ -75,7 +70,3 @@ class SwaggerApiView(APIDocView):
             'models': generator.get_models(apis),
             'basePath': self.api_full_uri,
         })
-
-    def get_api_for_resource(self, filter_path):
-        urlparser = UrlParser()
-        return urlparser.get_apis(filter_path=filter_path)

@@ -30,7 +30,7 @@ class DocumentationGenerator(object):
         operations = []
         callback = api['callback']
 
-        allowed_methods = self.__get_allowed_methods__(callback, api['path'])
+        allowed_methods = map(unicode.upper, api['methods'].keys())
 
         for method in allowed_methods:
             if method == "OPTIONS":
