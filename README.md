@@ -31,7 +31,7 @@ Backwards compatibility for earlier Django & Django REST Framework versions will
         )
     ```
     
-2. Use `SwaggerRouter` registration of your REST API:
+2. Use `SwaggerRouter` for registration of your REST API:
 
    ```python
    from rest_framework_swagger import routers
