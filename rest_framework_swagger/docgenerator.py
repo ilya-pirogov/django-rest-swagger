@@ -30,56 +30,25 @@ class DocumentationGenerator(object):
         operations = []
         callback = api['callback']
 
-        allowed_methods = map(unicode.upper, api['methods'].keys())
-
-        for method in allowed_methods:
-            if method == "OPTIONS":
-                continue  # No one cares. I assume JSON.
+        for http_method, view_method in api['methods'].items():
+            http_method = http_method.upper()
 
             operation = {
-                'httpMethod': method,
-                'summary': self.__get_method_docs__(callback, method),
+                'httpMethod': http_method,
+                'summary': self.__get_method_docs__(
+                    callback, http_method, view_method),
                 'nickname': self.__get_nickname__(callback),
-                'notes': self.__get_notes__(callback, method),
+                'notes': self.__get_notes__(callback, view_method),
                 'responseClass': self.__get_serializer_class_name__(callback),
             }
 
-            parameters = self.get_parameters(api, method)
+            parameters = self.get_parameters(api, http_method, view_method)
             if len(parameters) > 0:
                 operation['parameters'] = parameters
 
             operations.append(operation)
 
         return operations
-
-    def __get_allowed_methods__(self, callback, path):
-        if issubclass(callback, viewsets.ViewSetMixin):
-            allowed_methods = set()
-            mapping = {
-                'create': 'POST',
-                'retrieve': 'GET',
-                'update': 'PUT',
-                'partial_update': 'PATCH',
-                'destroy': 'DELETE',
-                'list': 'GET'
-            }
-            object_view_methods = ['create', 'retrieve', 'updated', 'partial_update', 'destroy']
-            list_view_methods = ['create', 'list']
-
-            if '{%s}' % callback.lookup_field in path:
-                loop_list = object_view_methods
-            else:
-                loop_list = list_view_methods
-
-            for method_name in loop_list:
-                if hasattr(callback, method_name):
-                    allowed_methods.add(mapping[method_name])
-
-            return list(allowed_methods)
-
-        allowed_methods = callback().allowed_methods
-
-        return allowed_methods
 
     def __get_name__(self, callback):
         """
@@ -103,13 +72,17 @@ class DocumentationGenerator(object):
         except AttributeError:
             return None
 
-    def __get_method_docs__(self, callback, method):
+    def __get_method_docs__(self, callback, http_method, view_method):
         """
         Attempts to retrieve method specific docs for an
         endpoint. If none are available, the class docstring
         will be used
         """
-        docs = self.__eval_method_docstring_(callback, method)
+        for name, desc in self.__parse_from_docstring__(callback, view_method):
+            if name == http_method:
+                return desc
+
+        docs = self.__eval_method_docstring_(callback, view_method)
 
         if docs is None:
             docs = self.__get_description__(callback)
@@ -182,7 +155,7 @@ class DocumentationGenerator(object):
 
         return models
 
-    def get_parameters(self, api, method):
+    def get_parameters(self, api, http_method, view_method):
         """
         Returns parameters for an API. Parameters are a combination of HTTP
         query parameters as well as HTTP body parameters that are defined by
@@ -191,13 +164,15 @@ class DocumentationGenerator(object):
         params = []
         path_params = self.__build_path_parameters__(api['path'])
         body_params = self.__build_body_parameters__(api['callback'])
-        form_params = self.__build_form_parameters__(api['callback'], method)
-        query_params = self.__build_query_params_from_docstring__(api['callback'], method)
+        form_params = self.__build_form_parameters__(
+            api['callback'], view_method, http_method == 'PATCH')
+        query_params = self.__build_query_params__(
+            self.__parse_from_docstring__(api['callback'], view_method))
 
         if path_params:
             params += path_params
 
-        if method not in ["GET", "DELETE"]:
+        if http_method not in ["GET", "DELETE"]:
             params += form_params
 
             if not form_params and body_params is not None:
@@ -237,7 +212,7 @@ class DocumentationGenerator(object):
 
         return params
 
-    def __build_form_parameters__(self, callback, method):
+    def __build_form_parameters__(self, callback, method, force_optional):
         """
         Builds form parameters from the serializer class
         """
@@ -266,6 +241,9 @@ class DocumentationGenerator(object):
                     'valueType': 'RANGE'
                 }
 
+            required = False if force_optional else \
+                getattr(field, 'required', None)
+
             data.append({
                 'paramType': 'form',
                 'name': name,
@@ -273,37 +251,40 @@ class DocumentationGenerator(object):
                 'allowableValues': allowable_values,
                 'description': getattr(field, 'help_text', ''),
                 'defaultValue': getattr(field, 'default', None),
-                'required': getattr(field, 'required', None)
+                'required': required
             })
 
         return data
 
-    def __build_query_params_from_docstring__(self, callback, method=None):
-
-        params = []
+    def __parse_from_docstring__(self, callback, method=None):
         # Combine class & method level comments. If parameters are specified
+        docstring = get_view_description(callback)
         if method is not None:
-            docstring = self.__eval_method_docstring_(callback, method)
-            params += self.__build_query_params_from_docstring__(callback)
-        else: # Otherwise, get the class level docstring
-            docstring = get_view_description(callback)
-
-        if docstring is None:
-            return params
+            method_docs = self.__eval_method_docstring_(callback, method)
+            if method_docs:
+                docstring += method_docs
 
         split_lines = docstring.split('\n')
 
         for line in split_lines:
             param = line.split(' -- ')
             if len(param) == 2:
-                params.append({
+                yield param[0].strip(), param[1].strip()
+
+    @staticmethod
+    def __build_query_params__(params):
+        ret = []
+
+        for name, description in params:
+            if not name in ('GET', 'POST', 'PUT', 'DELETE', 'PATCH'):
+                ret.append({
                     'paramType': 'query',
-                    'name': param[0].strip(),
-                    'description': param[1].strip(),
+                    'name': name,
+                    'description': description,
                     'dataType': '',
                 })
 
-        return params
+        return ret
 
     def __get_serializer_fields__(self, serializer):
         """
