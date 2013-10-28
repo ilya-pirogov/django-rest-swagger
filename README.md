@@ -4,7 +4,7 @@
 For older versions of Django REST Framework, see [Django REST Framework Docs](https://github.com/marcgibbons/django-rest-framework-docs)
 
 ## Installation
-From PyPI: `pip install django-rest-swagger`
+From PyPI: `pip install -e git+https://github.com/ilya-pirogov/django-rest-swagger.git#egg=django-rest-swagger`
 
 From source:
 - Download the source
@@ -30,12 +30,24 @@ Backwards compatibility for earlier Django & Django REST Framework versions will
             'rest_framework_swagger',
         )
     ```
+    
+2. Use `SwaggerRouter` registration of your REST API:
 
-2. Include the rest_framework_swagger URLs to a path of your choice
+   ```python
+   from rest_framework_swagger import routers
+   ...
+   
+   router = routers.SwaggerRouter()
+   router.register(r'users', views.UserViewSet)
+   router.register(r'groups', views.GroupViewSet)
+   ```
+
+3. Include the rest_framework_swagger URLs to a path of your choice
 
     ```python
     patterns = ('',
         ...
+        url(r'^api/', include(router.urls)),
         url(r'^api-docs/', include('rest_framework_swagger.urls')),
     )
     ```
@@ -108,6 +120,7 @@ Thanks to [BNOTIONS](http://www.bnotions.com) for sponsoring development time an
 Many thanks to Tom Christie & all the contributors who have developed [Django REST Framework](http://django-rest-framework.org/)
 
 ## Contributors
+* Ilya Pirogov (@ilya-pirogov)
 * Marc Gibbons (@marcgibbons)
 * Geraldo Andrade (@quein)
 * Vítek Pliska (@whit)
