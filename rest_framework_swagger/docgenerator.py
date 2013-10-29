@@ -3,7 +3,7 @@ Generates Documentation
 """
 import re
 from django.contrib.admindocs.utils import trim_docstring
-from rest_framework import viewsets
+from rest_framework import viewsets, serializers
 from rest_framework.views import get_view_name, get_view_description
 
 
@@ -39,7 +39,8 @@ class DocumentationGenerator(object):
                     callback, http_method, view_method),
                 'nickname': self.__get_nickname__(callback),
                 'notes': self.__get_notes__(callback, view_method),
-                'responseClass': self.__get_serializer_class_name__(callback),
+                'responseClass': self.__get_model_name__(
+                    self.__get_serializer_class__(callback)),
             }
 
             parameters = self.get_parameters(api, http_method, view_method)
@@ -146,12 +147,7 @@ class DocumentationGenerator(object):
         models = {}
 
         for serializer in serializers:
-            properties = self.__get_serializer_fields__(serializer)
-
-            models[serializer.__name__] = {
-                'id': serializer.__name__,
-                'properties': properties,
-            }
+            self.__generate_model_from_serializer__(models, serializer)
 
         return models
 
@@ -286,7 +282,20 @@ class DocumentationGenerator(object):
 
         return ret
 
-    def __get_serializer_fields__(self, serializer):
+    @staticmethod
+    def __get_model_name__(serializer):
+        """
+        Generate model name from serializer's class name
+        """
+        suffix = 'Serializer'
+        model_name = serializer.__name__
+
+        if model_name[-len(suffix):] == suffix:
+            model_name = model_name[:-len(suffix)]
+
+        return model_name
+
+    def __generate_model_from_serializer__(self, models, serializer):
         """
         Returns serializer fields in the Swagger MODEL format
         """
@@ -297,20 +306,32 @@ class DocumentationGenerator(object):
 
         data = {}
         for name, field in fields.items():
-
-            data[name] = {
-                'type': field.type_label,
-                'required': getattr(field, 'required', None),
-                'allowableValues': {
-                    'min': getattr(field, 'min_length', None),
-                    'max': getattr(field, 'max_length', None),
-                    'defaultValue': getattr(field, 'default', None),
-                    'readOnly': getattr(field, 'read_only', None),
-                    'valueType': 'RANGE',
+            field_type = type(field)
+            if issubclass(field_type, serializers.Serializer):
+                self.__generate_model_from_serializer__(models, field_type)
+                data[name] = {
+                    '$ref': self.__get_model_name__(field_type),
+                    'description': field_type.__doc__
                 }
-            }
+            else:
+                data[name] = {
+                    'type': field.type_label,
+                    'required': getattr(field, 'required', None),
+                    'description': field_type.__doc__,
+                    'allowableValues': {
+                        'min': getattr(field, 'min_length', None),
+                        'max': getattr(field, 'max_length', None),
+                        'defaultValue': getattr(field, 'default', None),
+                        'readOnly': getattr(field, 'read_only', None),
+                        'valueType': 'RANGE',
+                    }
+                }
 
-        return data
+        name = self.__get_model_name__(serializer)
+        models[name] = {
+            'id': name,
+            'properties': data,
+        }
 
     def __get_serializer_class__(self, callback):
         if hasattr(callback, 'get_serializer_class'):

@@ -54,7 +54,7 @@ class SwaggerResourcesView(APIDocView):
         return Response({
             'apiVersion': SWAGGER_SETTINGS.get('api_version', ''),
             'swaggerVersion': '1.2.4',
-            'basePath': self.host,
+            'basePath': self.host.rstrip('/'),
             'apis': apis
         })
 
